@@ -138,9 +138,11 @@ class IdeClassLoader extends ClassLoader
 
             if ($fileCompiled->exists() && $this->cache && !$this->reloadCache) {
                 try {
-                    echo "LOAD compiled '$name.phb'", "\n";
+                    $t = Time::millis();
                     $module = new Module($fileCompiled, true);
                     $module->call();
+
+                    echo "LOAD compiled '$name.phb'", " (", Time::millis() - $t, "ms)", "\n";
                 } catch (\Exception $e) {
                     echo " ---> error \n";
                     $this->loadClassFromPath($name);

@@ -2,6 +2,7 @@
 namespace ide\systems;
 
 
+use ide\Ide;
 use ide\IdeClassLoader;
 use php\io\File;
 use php\lang\System;
@@ -48,12 +49,22 @@ class IdeSystem
     {
         $hash = ["version"];
 
+        $home = System::getProperty('user.home');
+
+        $directories = self::getOwnLibDirectories();
+
+        $directories[] = File::of("$home/DevelNextLibrary");
+        $directories[] = self::getOwnFile("library");
+
+
+        if (self::isDevelopment()) {
+            $directories[] = self::getOwnFile("misc/library");
+        }
+
         foreach (self::getOwnLibDirectories() as $directory) {
-            foreach ($directory->findFiles() as $file) {
-                if (fs::ext($file) == 'jar') {
-                    $hash[] = $file->hash('MD5');
-                }
-            }
+            fs::scan($directory, function ($file) {
+                $hash[] = File::of($file)->hash('MD5');
+            });
         }
 
         return str::join($hash, "+");

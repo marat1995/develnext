@@ -12,10 +12,13 @@ use php\lang\ClassLoader;
 use php\lang\Environment;
 use php\lang\Module;
 use php\lang\SourceMap;
+use php\lang\Thread;
+use php\lang\ThreadPool;
 use php\lib\fs;
 use php\lib\str;
 use php\time\Time;
 use php\util\Scanner;
+use php\util\SharedQueue;
 use php\util\SharedValue;
 
 define('DEVELNEXT_PROJECT_DEBUG', true);
@@ -41,9 +44,19 @@ class DebugClassLoader extends ClassLoader
     protected $cacheDir;
 
     /**
-     * @var \php\lang\ThreadPool
+     * @var ThreadPool
      */
     protected $threadPool;
+
+    /**
+     * @var ThreadPool
+     */
+    protected $dumpThreadPool;
+
+    /**
+     * @var SharedQueue
+     */
+    protected $dumpModuleQueue;
 
     /**
      * @var array
@@ -64,7 +77,9 @@ class DebugClassLoader extends ClassLoader
             $this->cacheDir = null;
         }
 
-        $this->threadPool = \php\lang\ThreadPool::create(1, 5, 7 * 1000);
+        $this->threadPool = ThreadPool::create(1, 5, 7 * 1000);
+        $this->dumpThreadPool = ThreadPool::createSingle();
+        $this->dumpModuleQueue = new SharedQueue();
 
         $this->readCacheIgnore();
     }
@@ -103,6 +118,7 @@ class DebugClassLoader extends ClassLoader
     public function __destruct()
     {
         $this->threadPool->shutdown();
+        $this->dumpThreadPool->shutdown();
     }
 
     public function loadClass($name)
@@ -134,13 +150,17 @@ class DebugClassLoader extends ClassLoader
                 $this->tryLoadSourceMap($filename);
             });
 
+            $this->dumpModuleQueue->add($filename);
+
             $module = new Module($filename);
             $module->call();
 
             if ($filenameEncoded && !$this->isIgnore($name)) {
-                if (fs::ensureParent($filenameEncoded)) {
-                    $module->dump($filenameEncoded);
-                }
+                $this->dumpThreadPool->execute(function () use ($filename, $module, $filenameEncoded) {
+                    if (fs::ensureParent($filenameEncoded)) {
+                        $module->dump($filenameEncoded);
+                    }
+                });
             }
 
             //require $filename;
